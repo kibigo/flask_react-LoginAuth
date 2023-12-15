@@ -1,28 +1,46 @@
-from flask import Flask, request, abort, jsonify
+from flask import Flask, request, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_bcrypt import Bcrypt
 from models import db, User
+from flask_cors import CORS
 
 
 app = Flask(__name__)
-
-bcrypt = Bcrypt(app)
+app.secret_key = b'Y\xf1Xz\x00\xad|eQ\x80t \xca\x1a\x10K'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.json.compact = False
 
 migrate = Migrate(app, db)
+db.init_app(app)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.database'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'hehegrgrooqur'
+bcrypt = Bcrypt(app)
+CORS(app, supports_credentials=True)
 
 
+@app.route('/@me')
+def get_current_user():
+    user_id = session.get('user_id')
 
-@app.route('/register', method = ['POST'])
+    if not user_id:
+        return jsonify({
+            "error":"Unauthorized"
+        }),401
+    
+    user = User.query.filter_by(id = user_id).first()
+    return jsonify({
+        "id": user.id,
+        "email":user.email
+    })
+
+
+@app.route('/register', methods = ['POST'])
 
 def register_user():
 
-    email = request.json('email')
-    password = request.json('password')
+    email = request.json['email']
+    password = request.json['password']
 
     user_exists = User.query.filter_by(email = email).first() is not None
 
@@ -43,3 +61,34 @@ def register_user():
         "id": new_user.id,
         "email": new_user.email
     })
+
+
+
+@app.route('/login', methods = ['POST'])
+
+def login_user():
+    email = request.json['email']
+    password = request.json['password']
+
+    user = User.query.filter_by(email = email).first()
+
+    if user is None:
+        
+        return jsonify({
+            "error" : "Unauthorized"
+        }),401
+    
+    if not bcrypt.check_password_hash(user.password, password):
+        return jsonify({"error": "unauthorized"}),401
+    
+    session["user_id"] = user.id
+    
+    return jsonify({
+        "id": user.id,
+        "email":user.email
+    })
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
+    
